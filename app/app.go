@@ -112,6 +112,7 @@ import (
 	"github.com/comdex-official/comdex/x/liquidation"
 	liquidationkeeper "github.com/comdex-official/comdex/x/liquidation/keeper"
 	liquidationtypes "github.com/comdex-official/comdex/x/liquidation/types"
+	ojooracletypes "github.com/comdex-official/comdex/x/ojooracle/types"
 
 	abcitypes "github.com/tendermint/tendermint/abci/types"
 	tmjson "github.com/tendermint/tendermint/libs/json"
@@ -133,6 +134,9 @@ import (
 	"github.com/comdex-official/comdex/x/esm"
 	esmkeeper "github.com/comdex-official/comdex/x/esm/keeper"
 	esmtypes "github.com/comdex-official/comdex/x/esm/types"
+
+	ojooraclemodule "github.com/comdex-official/comdex/x/ojooracle"
+	ojooraclemodulekeeper "github.com/comdex-official/comdex/x/ojooracle/keeper"
 
 	"github.com/comdex-official/comdex/x/lend"
 	lendclient "github.com/comdex-official/comdex/x/lend/client"
@@ -180,13 +184,14 @@ import (
 	liquidationsV2keeper "github.com/comdex-official/comdex/x/liquidationsV2/keeper"
 	liquidationsV2types "github.com/comdex-official/comdex/x/liquidationsV2/types"
 
+	icq "github.com/cosmos/ibc-apps/modules/async-icq/v4"
+	icqkeeper "github.com/cosmos/ibc-apps/modules/async-icq/v4/keeper"
+	icqtypes "github.com/cosmos/ibc-apps/modules/async-icq/v4/types"
+
 	"github.com/comdex-official/comdex/x/auctionsV2"
 	auctionsV2client "github.com/comdex-official/comdex/x/auctionsV2/client"
 	auctionsV2keeper "github.com/comdex-official/comdex/x/auctionsV2/keeper"
 	auctionsV2types "github.com/comdex-official/comdex/x/auctionsV2/types"
-	icq "github.com/cosmos/ibc-apps/modules/async-icq/v4"
-	icqkeeper "github.com/cosmos/ibc-apps/modules/async-icq/v4/keeper"
-	icqtypes "github.com/cosmos/ibc-apps/modules/async-icq/v4/types"
 
 	cwasm "github.com/comdex-official/comdex/app/wasm"
 
@@ -286,6 +291,7 @@ var (
 		market.AppModuleBasic{},
 		locker.AppModuleBasic{},
 		bandoraclemodule.AppModuleBasic{},
+		ojooraclemodule.AppModuleBasic{},
 		collector.AppModuleBasic{},
 		liquidation.AppModuleBasic{},
 		auction.AppModuleBasic{},
@@ -357,6 +363,7 @@ type App struct {
 	ScopedIBCTransferKeeper capabilitykeeper.ScopedKeeper
 	ScopedIBCOracleKeeper   capabilitykeeper.ScopedKeeper
 	ScopedBandoracleKeeper  capabilitykeeper.ScopedKeeper
+	ScopedOjooracleKeeper   capabilitykeeper.ScopedKeeper
 	ScopedICAHostKeeper     capabilitykeeper.ScopedKeeper
 	ScopedICQKeeper         capabilitykeeper.ScopedKeeper
 
@@ -364,6 +371,7 @@ type App struct {
 	AssetKeeper      assetkeeper.Keeper
 	CollectorKeeper  collectorkeeper.Keeper
 	VaultKeeper      vaultkeeper.Keeper
+	OjooracleKeeper  ojooraclemodulekeeper.Keeper
 
 	MarketKeeper      marketkeeper.Keeper
 	LiquidationKeeper liquidationkeeper.Keeper
@@ -421,7 +429,7 @@ func New(
 			govtypes.StoreKey, paramstypes.StoreKey, ibchost.StoreKey, icahosttypes.StoreKey, upgradetypes.StoreKey,
 			evidencetypes.StoreKey, ibctransfertypes.StoreKey, capabilitytypes.StoreKey,
 			vaulttypes.StoreKey, assettypes.StoreKey, collectortypes.StoreKey, liquidationtypes.StoreKey,
-			markettypes.StoreKey, bandoraclemoduletypes.StoreKey, lockertypes.StoreKey,
+			markettypes.StoreKey, bandoraclemoduletypes.StoreKey, ojooracletypes.StoreKey, lockertypes.StoreKey,
 			wasm.StoreKey, authzkeeper.StoreKey, auctiontypes.StoreKey, tokenminttypes.StoreKey,
 			rewardstypes.StoreKey, feegrant.StoreKey, liquiditytypes.StoreKey, esmtypes.ModuleName, lendtypes.StoreKey,
 			liquidationsV2types.StoreKey, auctionsV2types.StoreKey, ibchookstypes.StoreKey, packetforwardtypes.StoreKey, icqtypes.StoreKey,
@@ -480,6 +488,7 @@ func New(
 	app.ParamsKeeper.Subspace(rewardstypes.ModuleName)
 	app.ParamsKeeper.Subspace(liquidationsV2types.ModuleName)
 	app.ParamsKeeper.Subspace(auctionsV2types.ModuleName)
+	app.ParamsKeeper.Subspace(ojooracletypes.ModuleName)
 	app.ParamsKeeper.Subspace(ibcratelimittypes.ModuleName)
 	app.ParamsKeeper.Subspace(icqtypes.ModuleName)
 	app.ParamsKeeper.Subspace(packetforwardtypes.ModuleName).WithKeyTable(packetforwardtypes.ParamKeyTable())
@@ -507,6 +516,7 @@ func New(
 		scopedICAHostKeeper    = app.CapabilityKeeper.ScopeToModule(icahosttypes.SubModuleName)
 		scopedBandoracleKeeper = app.CapabilityKeeper.ScopeToModule(bandoraclemoduletypes.ModuleName)
 		scopedICQKeeper        = app.CapabilityKeeper.ScopeToModule(icqtypes.ModuleName)
+		scopeOjooracleKeeper   = app.CapabilityKeeper.ScopeToModule(ojooracletypes.ModuleName)
 	)
 
 	// add keepers
@@ -685,6 +695,28 @@ func New(
 	bandoracleModule := bandoraclemodule.NewAppModule(
 		appCodec,
 		app.BandoracleKeeper,
+		app.AccountKeeper,
+		app.BankKeeper,
+		app.ScopedBandoracleKeeper,
+		&app.IbcKeeper.PortKeeper,
+		app.IbcKeeper.ChannelKeeper,
+	)
+
+	app.OjooracleKeeper = ojooraclemodulekeeper.NewKeeper(
+		appCodec,
+		keys[ojooracletypes.StoreKey],
+		keys[ojooracletypes.MemStoreKey],
+		app.GetSubspace(ojooracletypes.ModuleName),
+		app.IbcKeeper.ChannelKeeper,
+		&app.IbcKeeper.PortKeeper,
+		scopeOjooracleKeeper,
+		&app.MarketKeeper,
+		app.AssetKeeper,
+	)
+
+	ojoOraclemodule := ojooraclemodule.NewAppModule(
+		appCodec,
+		app.OjooracleKeeper,
 		app.AccountKeeper,
 		app.BankKeeper,
 		app.ScopedBandoracleKeeper,
@@ -878,6 +910,7 @@ func New(
 		AddRoute(assettypes.RouterKey, asset.NewUpdateAssetProposalHandler(app.AssetKeeper)).
 		AddRoute(lendtypes.RouterKey, lend.NewLendHandler(app.LendKeeper)).
 		AddRoute(bandoraclemoduletypes.RouterKey, bandoraclemodule.NewFetchPriceHandler(app.BandoracleKeeper)).
+		AddRoute(ojooracletypes.RouterKey, ojooraclemodule.NewFetchPriceHandler(app.OjooracleKeeper)).
 		AddRoute(ibchost.RouterKey, ibcclient.NewClientProposalHandler(app.IbcKeeper.ClientKeeper)).
 		AddRoute(ibcclienttypes.RouterKey, ibcclient.NewClientProposalHandler(app.IbcKeeper.ClientKeeper)).
 		AddRoute(liquiditytypes.RouterKey, liquidity.NewLiquidityProposalHandler(app.LiquidityKeeper)).
@@ -905,11 +938,14 @@ func New(
 		// transferIBCModule   = ibctransfer.NewIBCModule(app.IbcTransferKeeper)
 		oracleModule        = market.NewAppModule(app.cdc, app.MarketKeeper, app.BandoracleKeeper, app.AssetKeeper)
 		bandOracleIBCModule = bandoraclemodule.NewIBCModule(app.BandoracleKeeper)
+		ojoOracleIBCModule  = ojooraclemodule.NewIBCModule(app.OjooracleKeeper)
 	)
 
 	// ibcRouter.AddRoute(ibctransfertypes.ModuleName, transferIBCModule)
 	ibcRouter.AddRoute(ibctransfertypes.ModuleName, app.TransferStack)
 	ibcRouter.AddRoute(bandoraclemoduletypes.ModuleName, bandOracleIBCModule)
+	ibcRouter.AddRoute(ojooracletypes.ModuleName, ojoOracleIBCModule)
+
 	ibcRouter.AddRoute(wasm.ModuleName, wasm.NewIBCHandler(app.WasmKeeper, app.IbcKeeper.ChannelKeeper, app.IbcKeeper.ChannelKeeper))
 	ibcRouter.AddRoute(icahosttypes.SubModuleName, icaHostIBCModule)
 	ibcRouter.AddRoute(icqtypes.ModuleName, icqModule)
@@ -955,6 +991,7 @@ func New(
 		vault.NewAppModule(app.cdc, app.VaultKeeper),
 		oracleModule,
 		bandoracleModule,
+		ojoOraclemodule,
 		liquidation.NewAppModule(app.cdc, app.LiquidationKeeper, app.AccountKeeper, app.BankKeeper),
 		locker.NewAppModule(app.cdc, app.LockerKeeper, app.AccountKeeper, app.BankKeeper),
 		collector.NewAppModule(app.cdc, app.CollectorKeeper, app.AccountKeeper, app.BankKeeper),
@@ -998,6 +1035,7 @@ func New(
 		collectortypes.ModuleName,
 		vaulttypes.ModuleName,
 		bandoraclemoduletypes.ModuleName,
+		ojooracletypes.ModuleName,
 		markettypes.ModuleName,
 		lockertypes.ModuleName,
 		liquidationtypes.ModuleName,
@@ -1039,6 +1077,7 @@ func New(
 		capabilitytypes.ModuleName,
 		upgradetypes.ModuleName,
 		bandoraclemoduletypes.ModuleName,
+		ojooracletypes.ModuleName,
 		markettypes.ModuleName,
 		lockertypes.ModuleName,
 		vaulttypes.ModuleName,
@@ -1092,6 +1131,7 @@ func New(
 		vaulttypes.ModuleName,
 		tokenminttypes.ModuleName,
 		bandoraclemoduletypes.ModuleName,
+		ojooracletypes.ModuleName,
 		markettypes.ModuleName,
 		liquidationtypes.ModuleName,
 		auctiontypes.ModuleName,
@@ -1174,6 +1214,7 @@ func New(
 	app.ScopedIBCOracleKeeper = scopedIBCOracleKeeper
 	app.ScopedICAHostKeeper = scopedICAHostKeeper
 	app.ScopedBandoracleKeeper = scopedBandoracleKeeper
+	app.ScopedOjooracleKeeper = scopeOjooracleKeeper
 	app.ScopedICQKeeper = scopedICQKeeper
 
 	app.ScopedWasmKeeper = scopedWasmKeeper
