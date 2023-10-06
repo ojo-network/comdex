@@ -14,47 +14,51 @@ func BeginBlocker(ctx sdk.Context, _ abci.RequestBeginBlock, k keeper.Keeper) {
 
 	block := k.GetLastBlockHeight(ctx)
 	if block != types.Int64Zero {
-	if ctx.BlockHeight()%types.Int64Twenty == types.Int64Zero {
-		if ctx.BlockHeight()%types.Int64Twenty == types.Int64Zero {
-			if !k.GetCheckFlag(ctx) {
-				//TODO: add fetch price msg
-				_,err := k.FetchPrice(ctx)
-				if err != nil {
-					ctx.Logger().Error("Error in Fetch Price in 1st condition")
-				}
-				k.SetTempFetchPriceID(ctx, 0)
-				k.SetCheckFlag(ctx, true)
-				k.SetOracleValidationResult(ctx, false)
-
-			} else {
-				msg := k.GetFetchPriceMsg(ctx)
-				//TODO: add fetch price msg
-				_, err := k.FetchPrice(ctx)
-				if err != nil {
-					ctx.Logger().Error("Error in Fetch Price in 2nd condition")
-				}
-
-				id := k.GetLastFetchPriceID(ctx)
-				req := k.GetTempFetchPriceID(ctx)
-				res := k.OraclePriceValidationByRequestID(ctx, req)
-				discardData := k.GetDiscardData(ctx)
-				//By default discard height -1 - set while adding band proposal
-				//addd new parameter in kvv store to save the accepted discard height
-				//one more bool value to save the result of the operation---bydefault false
-				if !res && discardData.BlockHeight < 0 {
-					discardData.BlockHeight = ctx.BlockHeight()
-				} else if res && discardData.BlockHeight > 0 {
-					if (ctx.BlockHeight() - discardData.BlockHeight) < msg.AcceptedHeightDiff {
-						// No issues
-						discardData.BlockHeight = -1
-					} else if (ctx.BlockHeight() - discardData.BlockHeight) >= msg.AcceptedHeightDiff {
-						discardData.DiscardBool = true
-						discardData.BlockHeight = -1
+		if ctx.BlockHeight()%types.Int64One == types.Int64Zero {
+			for _, request := range []types.PriceRequestType{
+				types.PRICE_REQUEST_RATE,
+				types.PRICE_REQUEST_MEDIAN,
+				types.PRICE_REQUEST_DEVIATION,
+			} {
+				requestType := int32(request)
+				if !k.GetCheckFlag(ctx) {
+					_, err := k.FetchPrice(ctx, request)
+					if err != nil {
+						ctx.Logger().Error("Error in Fetch Price in 1st condition")
 					}
+					k.SetTempFetchPriceID(ctx, 0, requestType)
+					k.SetCheckFlag(ctx, true)
+					k.SetOracleValidationResult(ctx, false)
+
+				} else {
+					msg := k.GetFetchPriceMsg(ctx)
+					_, err := k.FetchPrice(ctx, request)
+					if err != nil {
+						ctx.Logger().Error("Error in Fetch Price in 2nd condition")
+					}
+
+					id := k.GetLastFetchPriceID(ctx, requestType)
+					req := k.GetTempFetchPriceID(ctx, requestType)
+					res := k.OraclePriceValidationByRequestID(ctx, req, requestType)
+					discardData := k.GetDiscardData(ctx)
+					//By default discard height -1 - set while adding band proposal
+					//addd new parameter in kvv store to save the accepted discard height
+					//one more bool value to save the result of the operation---bydefault false
+					if !res && discardData.BlockHeight < 0 {
+						discardData.BlockHeight = ctx.BlockHeight()
+					} else if res && discardData.BlockHeight > 0 {
+						if (ctx.BlockHeight() - discardData.BlockHeight) < msg.AcceptedHeightDiff {
+							// No issues
+							discardData.BlockHeight = -1
+						} else if (ctx.BlockHeight() - discardData.BlockHeight) >= msg.AcceptedHeightDiff {
+							discardData.DiscardBool = true
+							discardData.BlockHeight = -1
+						}
+					}
+					k.SetDiscardData(ctx, discardData)
+					k.SetOracleValidationResult(ctx, res)
+					k.SetTempFetchPriceID(ctx, id, requestType)
 				}
-				k.SetDiscardData(ctx, discardData)
-				k.SetOracleValidationResult(ctx, res)
-				k.SetTempFetchPriceID(ctx, id)
 			}
 		}
 	}

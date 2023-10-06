@@ -52,23 +52,16 @@ enum PriceRequestType{
 }
 
 message OracleRequestResult {
-    oneof rate {
-        ExchangeRate exchange_rate=1;
-        HistoricalPrices historical_price= 2;
-    }
+    repeated OracleData price_data=1 [(gogoproto.nullable) = false];
 }
 
-message HistoricalPrices {
+message OracleData {
     repeated cosmos.base.v1beta1.DecCoin exchange_rate = 2 [(gogoproto.nullable) = false];
     repeated uint64 block_num = 3;
-}
-
-message ExchangeRate{
-    cosmos.base.v1beta1.DecCoin exchange_rate = 2 [(gogoproto.nullable) = false];
-    uint64 block_num = 3;
 }
 
 message OracleRequestPacketAcknowledgement {
     option (gogoproto.equal) = true;
     uint64 request_id = 1 [(gogoproto.customname) = "RequestID"];
+    bytes data = 2;
 }

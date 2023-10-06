@@ -2,7 +2,7 @@ package types
 
 const (
 	// ModuleName defines the module name.
-	ModuleName = "ojooracle"
+	ModuleName = "relayoracle"
 
 	// StoreKey defines the primary module store key.
 	StoreKey = ModuleName
@@ -33,4 +33,12 @@ var (
 
 func KeyPrefix(p string) []byte {
 	return []byte(p)
+}
+
+func TempKeyPrefix(p string) []byte {
+	return []byte("TEMP_" + p)
+}
+
+func RequestKeyPrefix(p string) []byte {
+	return []byte("KEY_" + p)
 }

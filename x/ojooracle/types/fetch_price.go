@@ -13,11 +13,6 @@ var (
 	// FetchPriceResultStoreKeyPrefix is a prefix for storing result.
 	FetchPriceResultStoreKeyPrefix = "fetch_price_result"
 
-	// LastFetchPriceIDKey is the key for the last request id.
-	LastFetchPriceIDKey = "fetch_price_last_id"
-
-	TempFetchPriceIDKey = "fetch_price_temp_id"
-
 	// FetchPriceClientIDKey is query request identifier.
 	FetchPriceClientIDKey = "fetch_price_id"
 

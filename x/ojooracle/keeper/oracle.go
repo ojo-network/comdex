@@ -13,40 +13,41 @@ import (
 	"github.com/comdex-official/comdex/x/ojooracle/types"
 )
 
-func (k Keeper) SetFetchPriceResult(ctx sdk.Context, requestID types.OracleRequestID, result types.FetchPriceResult) {
+func (k Keeper) SetFetchPriceResult(ctx sdk.Context, requestID types.OracleRequestID, result types.OracleRequestResult) {
 	store := ctx.KVStore(k.storeKey)
 	store.Set(types.FetchPriceResultStoreKey(requestID), k.cdc.MustMarshal(&result))
 }
 
 // GetFetchPriceResult returns the FetchPrice by requestId.
-func (k Keeper) GetFetchPriceResult(ctx sdk.Context, id types.OracleRequestID) (types.FetchPriceResult, error) {
+func (k Keeper) GetFetchPriceResult(ctx sdk.Context, id types.OracleRequestID) (types.OracleRequestResult, error) {
 	bz := ctx.KVStore(k.storeKey).Get(types.FetchPriceResultStoreKey(id))
 	if bz == nil {
-		return types.FetchPriceResult{}, sdkerrors.Wrapf(types.ErrRequestIDNotAvailable,
+		return types.OracleRequestResult{}, sdkerrors.Wrapf(types.ErrRequestIDNotAvailable,
 			"GetResult: Result for request ID %d is not available.", id,
 		)
 	}
-	var result types.FetchPriceResult
+	var result types.OracleRequestResult
 	k.cdc.MustUnmarshal(bz, &result)
 	return result, nil
 }
 
 // GetLastFetchPriceID return the id from the last FetchPrice request.
-func (k Keeper) GetLastFetchPriceID(ctx sdk.Context) int64 {
-	bz := ctx.KVStore(k.storeKey).Get(types.KeyPrefix(types.LastFetchPriceIDKey))
+func (k Keeper) GetLastFetchPriceID(ctx sdk.Context, requestType int32) int64 {
+	bz := ctx.KVStore(k.storeKey).Get(types.KeyPrefix(types.PriceRequestType_name[requestType]))
 	intV := protobuftypes.Int64Value{}
 	k.cdc.MustUnmarshalLengthPrefixed(bz, &intV)
 	return intV.GetValue()
 }
 
 // SetLastFetchPriceID saves the id from the last FetchPrice request.
-func (k Keeper) SetLastFetchPriceID(ctx sdk.Context, id types.OracleRequestID) {
+func (k Keeper) SetLastFetchPriceID(ctx sdk.Context, id types.OracleRequestID, requestType int32) {
 	store := ctx.KVStore(k.storeKey)
-	store.Set(types.KeyPrefix(types.LastFetchPriceIDKey),
+
+	store.Set(types.RequestKeyPrefix(types.PriceRequestType_name[requestType]),
 		k.cdc.MustMarshalLengthPrefixed(&protobuftypes.Int64Value{Value: int64(id)}))
 }
 
-func (k Keeper) FetchPrice(ctx sdk.Context) (*types.MsgFetchPriceDataResponse, error) {
+func (k Keeper) FetchPrice(ctx sdk.Context, requestType types.PriceRequestType) (*types.MsgFetchPriceDataResponse, error) {
 	sourcePort := types.PortID
 	sourceChannelEnd, found := k.channelKeeper.GetChannel(ctx, sourcePort, "channel-0")
 	if !found {
@@ -75,16 +76,15 @@ func (k Keeper) FetchPrice(ctx sdk.Context) (*types.MsgFetchPriceDataResponse, e
 	//}
 
 	//TODO: remove
-	packetData := types.OracleRequestPacketData{
+	packet := types.OracleRequestPacketData{
 		ClientID: types.FetchPriceClientIDKey,
 		Calldata: k.cdc.MustMarshal(&types.RequestPrice{
 			Denoms:  []string{"ATOM"},
-			Request: types.PRICE_REQUEST_RATE,
+			Request: requestType,
 		}),
 	}
-
 	err := k.channelKeeper.SendPacket(ctx, channelCap, channeltypes.NewPacket(
-		types.ModuleCdc.MustMarshal(&packetData),
+		types.ModuleCdc.MustMarshal(&packet),
 		sequence,
 		sourcePort,
 		"channel-0",
@@ -156,8 +156,8 @@ func (k Keeper) AddFetchPriceRecords(ctx sdk.Context, price types.MsgFetchPriceD
 	return nil
 }
 
-func (k Keeper) OraclePriceValidationByRequestID(ctx sdk.Context, req int64) bool {
-	currentReqID := k.GetLastFetchPriceID(ctx)
+func (k Keeper) OraclePriceValidationByRequestID(ctx sdk.Context, req int64, requestType int32) bool {
+	currentReqID := k.GetLastFetchPriceID(ctx, requestType)
 
 	return currentReqID != req
 }
@@ -175,14 +175,14 @@ func (k Keeper) GetOracleValidationResult(ctx sdk.Context) bool {
 	return boolV.GetValue()
 }
 
-func (k Keeper) SetTempFetchPriceID(ctx sdk.Context, id int64) {
+func (k Keeper) SetTempFetchPriceID(ctx sdk.Context, id int64, requestType int32) {
 	store := ctx.KVStore(k.storeKey)
-	store.Set(types.KeyPrefix(types.TempFetchPriceIDKey),
+	store.Set(types.TempKeyPrefix(types.PriceRequestType_name[requestType]),
 		k.cdc.MustMarshalLengthPrefixed(&protobuftypes.Int64Value{Value: id}))
 }
 
-func (k Keeper) GetTempFetchPriceID(ctx sdk.Context) int64 {
-	bz := ctx.KVStore(k.storeKey).Get(types.KeyPrefix(types.TempFetchPriceIDKey))
+func (k Keeper) GetTempFetchPriceID(ctx sdk.Context, requestType int32) int64 {
+	bz := ctx.KVStore(k.storeKey).Get(types.TempKeyPrefix(types.PriceRequestType_name[requestType]))
 	intV := protobuftypes.Int64Value{}
 	k.cdc.MustUnmarshalLengthPrefixed(bz, &intV)
 	return intV.GetValue()

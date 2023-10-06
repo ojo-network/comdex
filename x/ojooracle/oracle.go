@@ -4,6 +4,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	channeltypes "github.com/cosmos/ibc-go/v4/modules/core/04-channel/types"
+	protobuftypes "github.com/gogo/protobuf/types"
 
 	"github.com/comdex-official/comdex/x/ojooracle/types"
 )
@@ -23,16 +24,20 @@ func (im IBCModule) handleOraclePacket(
 	if err := types.ModuleCdc.UnmarshalJSON(modulePacket.GetData(), &modulePacketData); err != nil {
 		return ack, nil
 	}
-
 	switch modulePacketData.GetClientID() {
 	case types.FetchPriceClientIDKey:
-		var priceResult types.Price
-		if err := types.ModuleCdc.UnmarshalJSON(modulePacketData.Result, &priceResult); err != nil {
+		//TODO: remove
+		ctx.Logger().Info("Received oracle packet ", "packet", modulePacketData.String())
+
+		var priceResult types.OracleRequestResult
+		if err := types.ModuleCdc.Unmarshal(modulePacketData.GetResult(), &priceResult); err != nil {
 			ack = channeltypes.NewErrorAcknowledgement(err)
 			return ack, sdkerrors.Wrap(sdkerrors.ErrUnknownRequest,
 				"cannot unmarshall price result packet")
 		}
-		ctx.Logger().Info("Received oracle packet this is here", "packet", modulePacketData.String())
+
+		//TODO: remove
+		ctx.Logger().Info("price result oracle packet", "price result", priceResult.String())
 
 		im.keeper.SetFetchPriceResult(ctx, types.OracleRequestID(modulePacketData.RequestID), priceResult)
 	// TODO: FetchPrice market data reception logic //nolint:godox
@@ -43,12 +48,12 @@ func (im IBCModule) handleOraclePacket(
 		ack = channeltypes.NewErrorAcknowledgement(err)
 		return ack, err
 	}
-	//TODO: fix this
-	//ack = channeltypes.NewResultAcknowledgement(
-	//	types.ModuleCdc.MustMarshalJSON(
-	//	//types.NewOracleRequestPacketAcknowledgement(modulePacketData.RequestID),
-	//	),
-	//)
+
+	ack = channeltypes.NewResultAcknowledgement(
+		types.ModuleCdc.MustMarshalJSON(
+			&types.OracleRequestPacketAcknowledgement{RequestID: modulePacketData.RequestID},
+		),
+	)
 	return ack, nil
 }
 
@@ -65,22 +70,39 @@ func (im IBCModule) handleOracleAcknowledgment(
 			return nil, nil
 		}
 
+		//TODO :remove after testing
+		//ctx.Logger().Error("processing acknow response packet", "packet", oracleAck.String())
+
 		var data types.OracleRequestPacketData
-		if err = types.ModuleCdc.UnmarshalJSON(modulePacket.GetData(), &data); err != nil {
+		if err = types.ModuleCdc.Unmarshal(modulePacket.GetData(), &data); err != nil {
 			return nil, nil
 		}
+
+		//TODO :remove after testing
+		//ctx.Logger().Error("processing acknow request packet data", "packet", data.String())
+		//
+
 		requestID := types.OracleRequestID(oracleAck.RequestID)
+		ctx.Logger().Info("Received acknow oracle packet this is here", "packet", data.String(), "requestID", requestID)
+
+		var requestType protobuftypes.Int32Value
+		err = types.ModuleCdc.UnmarshalLengthPrefixed(modulePacket.GetData(), &requestType)
+		if err != nil {
+			return nil, err
+		}
 
 		switch data.GetClientID() {
 		case types.FetchPriceClientIDKey:
-			var fetchPriceData types.FetchPriceCallData
-			if err = types.ModuleCdc.UnmarshalJSON(data.GetCalldata(), &fetchPriceData); err != nil {
+			var fetchPriceData types.RequestPrice
+			if err = types.ModuleCdc.Unmarshal(data.GetCalldata(), &fetchPriceData); err != nil {
 				return nil, sdkerrors.Wrap(err,
 					"cannot decode the fetchPrice market acknowledgment packet")
 			}
 
-			//TODO: fix this
-			im.keeper.SetLastFetchPriceID(ctx, requestID)
+			//TODO :remove after testing
+			ctx.Logger().Info("Received acknow oracle packet", "fetch price data", fetchPriceData.String())
+
+			im.keeper.SetLastFetchPriceID(ctx, requestID, requestType.Value)
 			return &sdk.Result{}, nil
 
 		default:
@@ -88,5 +110,6 @@ func (im IBCModule) handleOracleAcknowledgment(
 				"market acknowledgment packet not found: %s", data.GetClientID())
 		}
 	}
+
 	return nil, nil
 }

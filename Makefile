@@ -122,9 +122,7 @@ install: check_version go.sum
 	go install -mod=readonly $(BUILD_FLAGS) ./cmd/comdex
 
 build:
-	go build $(BUILD_FLAGS) -o bin/comdex ./cmd/comdex
-	mkdir build
-	cp -a bin/comdex ./build/
+	go build -mod=readonly $(BUILD_FLAGS) -o $(BUILDDIR)/ ./...
 
 release: install
 	mkdir -p release
@@ -186,8 +184,18 @@ endif
 
 .PHONY: run-tests test test-all $(TEST_TARGETS)
 
-protoVer=v0.1
-containerProtoGenSwagger=comdex-proto-gen-swagger-$(protoVer)
+containerProtoVer=v0.4
+containerProtoImage=tendermintdev/sdk-proto-gen:$(containerProtoVer)
+containerProtoGen=cosmos-sdk-proto-gen-$(containerProtoVer)
+containerProtoGenSwagger=cosmos-sdk-proto-gen-swagger-$(containerProtoVer)
+containerProtoFmt=cosmos-sdk-proto-fmt-$(containerProtoVer)
+
+
+proto-gen:
+	@echo "Generating Protobuf files"
+	@if docker ps -a --format '{{.Names}}' | grep -Eq "^${containerProtoGen}$$"; then docker start -a $(containerProtoGen); else docker run --name $(containerProtoGen) -v $(CURDIR):/workspace --workdir /workspace $(containerProtoImage) \
+		sh ./scripts/proto-gen.sh; fi
+	@go mod tidy
 
 proto-swagger-gen:
 	@echo
@@ -204,7 +212,7 @@ proto-swagger-gen:
 	@echo
 	@echo "=========== Docs Generation Complete ============"
 	@echo
-.PHONY: docs
+.PHONY: docs proto-gen
 
 test-sim-nondeterminism:
 	@echo "Running non-determinism test..."
@@ -276,4 +284,18 @@ test-cover:
 
 benchmark:
 	@go test -mod=readonly -bench=. $(PACKAGES_NOSIMULATION)
-.PHONY: benchmark
+
+#TODO: remove
+start:
+	${MAKE} build
+	./scripts/setup.sh
+	tail -f ./comdex.log
+
+#TODO: remove
+killall:
+	sudo killall -9 ojod
+	sudo killall -9 comdex
+	sudo killall -9 hermes1.5
+
+.PHONY: benchmark start killall build
+

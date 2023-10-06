@@ -6,25 +6,25 @@ import "google/api/annotations.proto";
 import "comdex/ojooracle/v1beta1/fetch_price.proto";
 import "comdex/ojooracle/v1beta1/params.proto";
 import "comdex/ojooracle/v1beta1/tx.proto";
-
+import "comdex/ojooracle/v1beta1/packet.proto";
 
 option go_package = "github.com/comdex-official/comdex/x/ojooracle/types";
 
 service Query {
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
-    option (google.api.http).get = "/comdex/bandoracle/v1beta1/params";
+    option (google.api.http).get = "/comdex/ojooracle/v1beta1/params";
   }
 
   rpc FetchPriceResult(QueryFetchPriceRequest) returns (QueryFetchPriceResponse) {
-    option (google.api.http).get = "/comdex/bandoracle/v1beta1/fetch_price_result/{request_id}";
+    option (google.api.http).get = "/comdex/ojooracle/v1beta1/fetch_price_result/{request_id}";
   }
 
   rpc LastFetchPriceID(QueryLastFetchPriceIdRequest) returns (QueryLastFetchPriceIdResponse) {
-    option (google.api.http).get = "/comdex/bandoracle/v1beta1/last_fetch_price_id";
+    option (google.api.http).get = "/comdex/ojooracle/v1beta1/last_fetch_price_id";
   }
 
   rpc FetchPriceData(QueryFetchPriceDataRequest) returns (QueryFetchPriceDataResponse) {
-    option (google.api.http).get = "/comdex/bandoracle/v1beta1/fetch_price_data";
+    option (google.api.http).get = "/comdex/ojooracle/v1beta1/fetch_price_data";
   }
 
   rpc DiscardData(QueryDiscardDataRequest) returns (QueryDiscardDataResponse) {
@@ -44,10 +44,12 @@ message QueryParamsResponse {
 message QueryFetchPriceRequest {int64 request_id = 1;}
 
 message QueryFetchPriceResponse {
-  FetchPriceResult result = 1;
+  OracleRequestResult result = 1;
 }
 
-message QueryLastFetchPriceIdRequest {}
+message QueryLastFetchPriceIdRequest {
+   PriceRequestType request_type = 1;
+}
 
 message QueryLastFetchPriceIdResponse {int64 request_id = 1;}
 
